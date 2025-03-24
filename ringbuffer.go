@@ -169,10 +169,15 @@ func (rb *Buffer[V]) Push(value V) {
 // buffer, when the returned cancel function is called, or when the parent
 // context's Done channel is closed, whichever happens first.
 //
+// If the provided parent context is nil, [context.Background] will be used.
+//
 // The cancel function releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete or
 // the value no longer needs to be inserted.
 func (rb *Buffer[V]) PushWithContext(parent context.Context, value V) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
 	ctx, cancel := context.WithCancel(parent)
 	if ctx.Err() != nil {
 		return ctx, cancel
@@ -251,6 +256,8 @@ func (rb *Buffer[V]) Pull() V {
 // buffer, when the returned cancel function is called, or when the parent
 // context's Done channel is closed, whichever happens first.
 //
+// If the provided parent context is nil, [context.Background] will be used.
+//
 // When an element is successfully pulled (removed) from the ring buffer,
 // it is stored in the given value. Clients are allowed to use the element
 // stored in the value after the pull completes.
@@ -259,6 +266,9 @@ func (rb *Buffer[V]) Pull() V {
 // call cancel as soon as the operations running in this Context complete or
 // the value no longer needs to be pulled from the ring buffer.
 func (rb *Buffer[V]) PullWithContext(parent context.Context, valuePtr *V) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
 	ctx, cancel := context.WithCancel(parent)
 	if ctx.Err() != nil {
 		return ctx, cancel
