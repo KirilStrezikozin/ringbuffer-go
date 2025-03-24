@@ -14,7 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package ring implements a generic circular (ring) buffer.
+// Package ring implements a generic, fixed-size, thread-safe circular
+// (ring) buffer.
 //
 // A ring buffer is a fixed-size buffer that functions as if it was connected
 // end-to-end. Operations like adding and removing elements are constant time
@@ -34,9 +35,9 @@ import (
 	"io"
 )
 
-// BareBufferer is the interface of a bare-bones circular (ring) buffer that
+// Bufferer is the interface of a circular (ring) buffer that
 // wraps the Count, Push, and Pull operations on the buffer.
-type BareBufferer[V any] interface {
+type Bufferer[V any] interface {
 	// Count returns the number of elements currently stored in the ring buffer.
 	Count() int
 
@@ -48,26 +49,6 @@ type BareBufferer[V any] interface {
 	// Pull removes an element from the ring buffer and returns it.
 	// Pull blocks if the buffer is empty until a new element is pushed to it.
 	Pull() V
-}
-
-// Bufferer is the interface of a circular (ring) buffer that is compatible
-// with [BareBufferer] and [io.ReadWriter] interfaces.
-type Bufferer[V any] interface {
-	Count() int
-	Len() int
-
-	ForcePush(value V)
-	Offer(value V) bool
-	Push(value V)
-	PushWithContext(ctx context.Context, value V) (context.Context, context.CancelFunc)
-
-	Poll() (V, bool)
-	Peek() V
-	Pull() V
-	PullWithContext(ctx context.Context, valuePtr *V) (context.Context, context.CancelFunc)
-
-	Write(p []V) (n int, err error)
-	Read(p []V) (n int, err error)
 }
 
 // Buffer implements [Bufferer], a circular (ring) fixed-size buffer with
@@ -337,7 +318,6 @@ func (rb *Buffer[V]) Read(p []V) (int, error) {
 }
 
 var (
-	_ io.ReadWriter     = &Buffer[byte]{}
-	_ Bufferer[int]     = &Buffer[int]{}
-	_ BareBufferer[int] = &Buffer[int]{}
+	_ io.ReadWriter = &Buffer[byte]{}
+	_ Bufferer[int] = &Buffer[int]{}
 )
