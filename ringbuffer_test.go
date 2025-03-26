@@ -206,3 +206,34 @@ func TestBuffer_Push(t *testing.T) {
 		}
 	}
 }
+
+func TestBuffer_OfferSize0(t *testing.T) {
+	done := make(chan error, 1)
+
+	go func() {
+		var err error
+
+		defer func() {
+			if err != nil {
+				done <- err
+				return
+			}
+
+			r := recover()
+			if err, ok := r.(error); ok {
+				done <- err
+			} else {
+				close(done)
+			}
+		}()
+
+		rb := ring.New[byte](0)
+		if ok := rb.Offer('h'); ok {
+			err = errors.New("Offer() = true, must be false on Buffer with size 0")
+		}
+	}()
+
+	if err := <-done; err != nil {
+		t.Fatalf("Offer() panicked on Buffer with size 0: %s", err)
+	}
+}
