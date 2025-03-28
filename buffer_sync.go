@@ -103,6 +103,11 @@ func (rb *SyncBuffer[V]) Len() int {
 	return len(rb.data)
 }
 
+// Full reports whether the ring buffer is full.
+func (rb *SyncBuffer[V]) Full() bool {
+	return int(rb.count.Load()) == len(rb.data)
+}
+
 // ForcePush inserts a new element into the ring buffer. If the buffer is full,
 // it overwrites the last element and advances the reading position.
 func (rb *SyncBuffer[V]) ForcePush(value V) {

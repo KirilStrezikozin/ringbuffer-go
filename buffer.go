@@ -89,6 +89,11 @@ func (rb *Buffer[V]) Len() int {
 	return len(rb.data)
 }
 
+// Full reports whether the ring buffer is full.
+func (rb *Buffer[V]) Full() bool {
+	return rb.count == len(rb.data)
+}
+
 // ForcePush inserts a new element into the ring buffer. If the buffer is full,
 // it overwrites the last element and advances the reading position.
 func (rb *Buffer[V]) ForcePush(value V) {
