@@ -39,6 +39,8 @@ type element[V any] struct {
 //
 // SyncBuffer with element type `byte` implements [io.ReadWriter] interface.
 type SyncBuffer[V any] struct {
+	_ noCopy
+
 	count atomic.Uintptr
 	write int
 	read  int
