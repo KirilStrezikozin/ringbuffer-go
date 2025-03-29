@@ -102,6 +102,12 @@ func (rb *Buffer[V]) Full() bool {
 // ForcePush inserts a new element into the ring buffer. If the buffer is full,
 // it overwrites the last element and advances the reading position.
 func (rb *Buffer[V]) ForcePush(value V) {
+	if len(rb.data) == 0 { // Fast path.
+		// Force-push to zero-sized buffer.
+		panic("force-push to zero-sized buffer")
+	}
+
+	// Slow path.
 	if rb.write == rb.read && rb.count != 0 {
 		newRead := rb.read + 1
 		if newRead == len(rb.data) {
@@ -125,6 +131,11 @@ func (rb *Buffer[V]) ForcePush(value V) {
 // if the buffer is not full and insertion succeeds. Otherwise, Offer does not
 // block and immediately returns false.
 func (rb *Buffer[V]) Offer(value V) bool {
+	if len(rb.data) == 0 { // Fast path.
+		return false
+	}
+
+	// Slow path.
 	if rb.write == rb.read && rb.count != 0 {
 		return false
 	}
@@ -145,6 +156,12 @@ func (rb *Buffer[V]) Offer(value V) bool {
 // reads an element from the buffer. For more control over insertion,
 // see [Buffer.Offer] and [Buffer.PushWithContext].
 func (rb *Buffer[V]) Push(value V) {
+	if len(rb.data) == 0 { // Fast path.
+		// Push to zero-sized buffer, panic instead of blocking forever.
+		panic("push to zero-sized buffer")
+	}
+
+	// Slow path.
 	for {
 		if rb.write == rb.read && rb.count != 0 {
 			continue
@@ -216,6 +233,12 @@ func (rb *Buffer[V]) PushWithContext(parent context.Context, value V) (context.C
 // immediately if the buffer is empty.
 func (rb *Buffer[V]) Poll() (V, bool) {
 	var value V
+
+	if len(rb.data) == 0 { // Fast path.
+		return value, false
+	}
+
+	// Slow path.
 	if rb.count == 0 {
 		return value, false
 	}
@@ -235,6 +258,12 @@ func (rb *Buffer[V]) Poll() (V, bool) {
 // blocking if the buffer is empty. This allows you to see what the next pull
 // will yield without affecting the buffer contents.
 func (rb *Buffer[V]) Peek() V {
+	if len(rb.data) == 0 { // Fast path.
+		// Peek into zero-sized buffer, panic instead of blocking forever.
+		panic("peek into zero-sized buffer")
+	}
+
+	// Slow path.
 	for {
 		if rb.count != 0 {
 			return rb.data[rb.read]
@@ -247,6 +276,12 @@ func (rb *Buffer[V]) Peek() V {
 // For more control over pulling, see [Buffer.Poll], [Buffer.Peek],
 // and [Buffer.PullWithContext].
 func (rb *Buffer[V]) Pull() V {
+	if len(rb.data) == 0 { // Fast path.
+		// Pull from zero-sized buffer, panic instead of blocking forever.
+		panic("pull from zero-sized buffer")
+	}
+
+	// Slow path.
 	for {
 		if rb.count == 0 {
 			continue
