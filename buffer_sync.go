@@ -37,6 +37,9 @@ type element[V any] struct {
 // constant time O(1) element adding and removing operations. SyncBuffer is
 // safe for concurrent use. Use [NewSync] to create it.
 //
+// The zero value is a buffer of size zero, on which blocking push and pull
+// operations panic.
+//
 // SyncBuffer with element type `byte` implements [io.ReadWriter] interface.
 type SyncBuffer[V any] struct {
 	_ noCopy
