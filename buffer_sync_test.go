@@ -17,6 +17,7 @@
 package ring_test
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -27,15 +28,21 @@ import (
 // fullBufferer wraps all methods of [ring.Buffer] and [ring.SyncBuffer] for
 // test helpers that check results of calling common methods.
 type fullBufferer[V any] interface {
-	Count() int
-	Len() int
+	ring.Bufferer[V]
 
-	Push(value V)
-	Pull() V
+	Len() int
+	Full() bool
+
+	ForcePush(value V)
+	Offer(value V) bool
+	PushWithContext(parent context.Context, value V) (context.Context, context.CancelFunc)
 
 	Peek() V
-	Offer(value V) bool
 	Poll() (V, bool)
+	PullWithContext(parent context.Context, valuePtr *V) (context.Context, context.CancelFunc)
+
+	Write(p []V) (n int, err error)
+	Read(p []V) (n int, err error)
 }
 
 // takePanic is a helper function that recovers a
