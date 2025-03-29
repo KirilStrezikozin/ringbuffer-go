@@ -98,11 +98,22 @@ func (rb *Buffer[V]) Full() bool {
 // it overwrites the last element and advances the reading position.
 func (rb *Buffer[V]) ForcePush(value V) {
 	if rb.write == rb.read && rb.count != 0 {
-		rb.read = (rb.read + 1) % len(rb.data)
+		newRead := rb.read + 1
+		if newRead == len(rb.data) {
+			newRead = 0
+		}
+		rb.read = newRead
+	} else {
+		rb.count++
+	}
+
+	newWrite := rb.write + 1
+	if newWrite == len(rb.data) {
+		newWrite = 0
 	}
 
 	rb.data[rb.write] = value
-	rb.write = (rb.write + 1) % len(rb.data)
+	rb.write = newWrite
 }
 
 // Offer tries to insert a new element into the ring buffer and returns true
@@ -113,8 +124,13 @@ func (rb *Buffer[V]) Offer(value V) bool {
 		return false
 	}
 
+	newWrite := rb.write + 1
+	if newWrite == len(rb.data) {
+		newWrite = 0
+	}
+
 	rb.data[rb.write] = value
-	rb.write = (rb.write + 1) % len(rb.data)
+	rb.write = newWrite
 	rb.count++
 	return true
 }
@@ -129,8 +145,13 @@ func (rb *Buffer[V]) Push(value V) {
 			continue
 		}
 
+		newWrite := rb.write + 1
+		if newWrite == len(rb.data) {
+			newWrite = 0
+		}
+
 		rb.data[rb.write] = value
-		rb.write = (rb.write + 1) % len(rb.data)
+		rb.write = newWrite
 		rb.count++
 		break
 	}
@@ -164,8 +185,13 @@ func (rb *Buffer[V]) PushWithContext(parent context.Context, value V) (context.C
 					continue
 				}
 
+				newWrite := rb.write + 1
+				if newWrite == len(rb.data) {
+					newWrite = 0
+				}
+
 				rb.data[rb.write] = value
-				rb.write = (rb.write + 1) % len(rb.data)
+				rb.write = newWrite
 				rb.count++
 
 				cancel()
@@ -189,8 +215,13 @@ func (rb *Buffer[V]) Poll() (V, bool) {
 		return value, false
 	}
 
+	newRead := rb.read + 1
+	if newRead == len(rb.data) {
+		newRead = 0
+	}
+
 	value = rb.data[rb.read]
-	rb.read = (rb.read + 1) % len(rb.data)
+	rb.read = newRead
 	rb.count--
 	return value, true
 }
@@ -216,8 +247,13 @@ func (rb *Buffer[V]) Pull() V {
 			continue
 		}
 
+		newRead := rb.read + 1
+		if newRead == len(rb.data) {
+			newRead = 0
+		}
+
 		value := rb.data[rb.read]
-		rb.read = (rb.read + 1) % len(rb.data)
+		rb.read = newRead
 		rb.count--
 		return value
 	}
@@ -255,8 +291,13 @@ func (rb *Buffer[V]) PullWithContext(parent context.Context, valuePtr *V) (conte
 					continue
 				}
 
+				newRead := rb.read + 1
+				if newRead == len(rb.data) {
+					newRead = 0
+				}
+
 				*valuePtr = rb.data[rb.read]
-				rb.read = (rb.read + 1) % len(rb.data)
+				rb.read = newRead
 				rb.count--
 
 				cancel()
