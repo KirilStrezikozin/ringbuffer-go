@@ -206,21 +206,14 @@ func (rb *Buffer[V]) PushWithContext(parent context.Context, value V) (context.C
 			case <-ctx.Done():
 				return
 			default:
-				if rb.write == rb.read && rb.count != 0 {
-					continue
+				if ok := rb.Offer(value); ok {
+					cancel()
+					return
 				}
 
-				newWrite := rb.write + 1
-				if newWrite == len(rb.data) {
-					newWrite = 0
-				}
-
-				rb.data[rb.write] = value
-				rb.write = newWrite
-				rb.count++
-
-				cancel()
-				return
+				// Buffer is full, spin and retry. It would be much better to
+				// wake this go-routine when push can proceed or when parent
+				// context cancels. See [SyncBuffer.Push] for some details.
 			}
 		}
 	}()
@@ -330,21 +323,20 @@ func (rb *Buffer[V]) PullWithContext(parent context.Context, valuePtr *V) (conte
 			case <-ctx.Done():
 				return
 			default:
+				// Avoid polling unnecessarily.
 				if rb.count == 0 {
 					continue
 				}
 
-				newRead := rb.read + 1
-				if newRead == len(rb.data) {
-					newRead = 0
+				if value, ok := rb.Poll(); ok {
+					*valuePtr = value
+					cancel()
+					return
 				}
 
-				*valuePtr = rb.data[rb.read]
-				rb.read = newRead
-				rb.count--
-
-				cancel()
-				return
+				// Buffer is empty, spin and retry. It would be much better to
+				// wake this go-routine when pull can proceed or when parent
+				// context cancels. See [SyncBuffer.Push] for some details.
 			}
 		}
 	}()
