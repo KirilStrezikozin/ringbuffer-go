@@ -87,6 +87,7 @@ func NewSyncFrom[V any](data []V) *SyncBuffer[V] {
 	rb.count.Store(uintptr(len(data)))
 	for i, v := range data {
 		rb.data[i].value = v
+		rb.data[i].can.Store(canReadElement)
 	}
 
 	return rb
