@@ -152,3 +152,28 @@ func ExampleBuffer_Read() {
 	// o wo (4)
 	// rld! (4)
 }
+
+// Drain a ring buffer.
+func ExampleBuffer_drain() {
+	// Drain (remove all elements from) a ring buffer.
+	// Same can be done with ring.SyncBuffer.
+
+	buff := []byte("hello world")
+	rb := ring.NewFrom(buff)
+
+	fmt.Println(rb.Full())
+
+	for {
+		if _, ok := rb.Poll(); !ok {
+			break
+		}
+	}
+
+	fmt.Println(rb.Count())
+	fmt.Println(rb.Len())
+
+	// Output:
+	// true
+	// 0
+	// 11
+}
