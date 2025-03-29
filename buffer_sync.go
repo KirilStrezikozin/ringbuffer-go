@@ -103,6 +103,49 @@ func (rb *SyncBuffer[V]) Len() int {
 	return len(rb.data)
 }
 
+// ForcePush inserts a new element into the ring buffer. If the buffer is full,
+// it overwrites the last element and advances the reading position.
+func (rb *SyncBuffer[V]) ForcePush(value V) {
+	if len(rb.data) == 0 { // Fast path.
+		// Force-push to zero-sized buffer.
+		panic("force-push to zero-sized buffer")
+	}
+
+	// Slow path.
+	rb.pushMu.Lock()
+
+	newWrite := rb.write + 1
+	if newWrite == len(rb.data) {
+		newWrite = 0
+	}
+
+	if rb.data[rb.write].can.Load() == canWriteElement {
+		rb.data[rb.write].value = value
+		rb.data[rb.write].can.Store(canReadElement)
+		rb.write = newWrite
+
+		rb.pushMu.Unlock()
+		rb.count.Add(1)
+		return
+	}
+
+	// Non-blocking push failed, overwrite the last element with our value.
+	rb.pullMu.Lock()
+
+	newRead := rb.read + 1
+	if newRead == len(rb.data) {
+		newRead = 0
+	}
+
+	// write == read at this point.
+	rb.data[rb.write].value = value
+	rb.read = newRead
+	rb.pullMu.Unlock()
+
+	rb.write = newWrite
+	rb.pushMu.Unlock()
+}
+
 // Offer tries to insert a new element into the ring buffer and returns true
 // if the buffer is not full and insertion succeeds. Otherwise, Offer does not
 // block and immediately returns false.
