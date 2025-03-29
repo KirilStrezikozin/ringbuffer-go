@@ -14,12 +14,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package ring implements a generic, fixed-size, thread-safe circular
-// (ring) buffer.
-//
-// This implementation operates in a FIFO (first in, first out) manner. Readers
-// and writers to a ring buffer can be organized as one-to-many, many-to-one,
-// and many-to-many. The data of the buffer is immutable to the user in a sense
-// that they cannot modify the elements currently stored in the buffer, only
-// retrieve them or insert new ones.
+/*
+Package ring implements a generic, fixed-size, thread-safe circular
+
+(ring) buffer.
+
+This implementation operates in a FIFO (first in, first out) manner. Readers
+and writers to a ring buffer can be organized as one-to-many, many-to-one,
+and many-to-many. The data of the buffer is immutable to the user in a sense
+that they cannot modify the elements currently stored in the buffer, only
+retrieve them or insert new ones.
+
+Simple ring buffer for single-threaded and not concurrent applications:
+
+	rb := ring.New[type](n)
+	rb.Push(value)
+	...
+	value := rb.Pull()
+
+Synchronized ring buffer for advanced use-cases that guarantees thread-safety:
+
+	rb := ring.NewSync[type](n)
+	...
+	go func() { // Producer.
+	    ...
+	    rb.Push(value)
+	}()
+	...
+	go func() { // Consumer.
+	    ...
+	    ctx, cancel := rb.PullWithContext(ctx, valuePtr)
+	    ...
+	}()
+*/
 package ring
