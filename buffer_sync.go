@@ -38,6 +38,7 @@ type element[V any] struct {
 //
 // SyncBuffer with element type `byte` implements [io.ReadWriter] interface.
 type SyncBuffer[V any] struct {
+	count atomic.Uintptr
 	write int
 	read  int
 
@@ -72,6 +73,7 @@ func NewSyncFrom[V any](data []V) *SyncBuffer[V] {
 		data:  make([]element[V], cap(data)),
 	}
 
+	rb.count.Store(uintptr(len(data)))
 	for i, v := range data {
 		rb.data[i].value = v
 	}
@@ -85,18 +87,7 @@ func (rb *SyncBuffer[V]) Count() int {
 		return 0
 	}
 
-	// Slow path.
-	// TODO: note on relaxed atomics.
-
-	write := rb.write
-	read := rb.read
-
-	if write == read && rb.data[write].can.Load() == canWriteElement {
-		return 0
-	} else if write > read {
-		return write - read
-	}
-	return len(rb.data) - read + write
+	return int(rb.count.Load()) // Slow path.
 }
 
 // Len returns the size of the ring buffer's data. This value is the maximum
@@ -123,6 +114,7 @@ func (rb *SyncBuffer[V]) Offer(value V) bool {
 		rb.write = newWrite
 
 		rb.pushMu.Unlock()
+		rb.count.Add(1)
 		return true
 	}
 
@@ -156,6 +148,7 @@ func (rb *SyncBuffer[V]) Push(value V) {
 			rb.write = newWrite
 
 			rb.pushMu.Unlock()
+			rb.count.Add(1)
 			return
 		}
 	}
@@ -184,6 +177,7 @@ func (rb *SyncBuffer[V]) Poll() (V, bool) {
 		rb.read = newRead
 
 		rb.pullMu.Unlock()
+		rb.count.Add(^uintptr(0))
 		return value, true
 	}
 
@@ -229,6 +223,7 @@ func (rb *SyncBuffer[V]) Pull() V {
 			rb.read = newRead
 
 			rb.pullMu.Unlock()
+			rb.count.Add(^uintptr(0))
 			return value
 		}
 
