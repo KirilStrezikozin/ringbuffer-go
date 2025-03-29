@@ -68,8 +68,13 @@ func New[V any](n int) *Buffer[V] {
 //
 // See also: [New].
 func NewFrom[V any](data []V) *Buffer[V] {
+	write := len(data)
+	if write == cap(data) {
+		write = 0
+	}
+
 	rb := &Buffer[V]{
-		write: len(data),
+		write: write,
 		count: len(data),
 		data:  make([]V, cap(data)),
 	}
