@@ -17,10 +17,11 @@
 package ring_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync"
-	"sync/atomic"
+	"time"
 
 	ring "github.com/KirilStrezikozin/ringbuffer-go"
 )
@@ -30,92 +31,80 @@ type Message struct {
 	Text string
 }
 
-func Example() {
-	n := 100
-	ch := make(chan Message, 5)
+// Create a ring buffer that is safe to push/pull from concurrently.
+// Launch a go-routine that polls elements from the ring buffer, blocking if
+// there are no elements to pull. Launch another go-routine that inserts
+// elements into the ring buffer, without blocking if the buffer is full.
+func ExampleNewSync() {
+	rb := ring.NewSync[Message](2)
 
+	total := 4
 	var wg sync.WaitGroup
 
-	// Consumers.
-	for i := range n {
-		wg.Add(1)
-		go func(k int) {
-			_ = <-ch
-			// fmt.Printf("arrived to %d consumer: %v\n", k, msg)
-			wg.Done()
-		}(i)
-	}
-
-	// Producers.
-	for i := range n {
-		wg.Add(1)
-		go func(k int) {
-			ch <- Message{
-				ID:   k,
-				Text: fmt.Sprintf("hello from %d", k),
+	// Spawn a concurrent ring buffer consumer (reader). Multiple such
+	// consumers can safely execute in parallel when using [ring.SyncBuffer].
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		n := 0
+		for {
+			if n == total {
+				return
 			}
-			wg.Done()
-		}(i)
-	}
+			msg := rb.Pull()
+			fmt.Println(msg.Text)
+			n++
+		}
+	}()
 
-	wg.Wait()
-
-	// Output:
-}
-
-func ExampleNew() {
-	n := 100
-	rbuff := ring.NewSync[Message](5)
-
-	// var m sync.Map
-
-	var retries atomic.Uint32
-	var wg sync.WaitGroup
-
-	// TODO: achieve thread-safety.
-	// TODO: need a simple example using *WithContext.
-	// TODO: need a simple example with producer go-routines and a consumer in
-	//       the main for loop with Poll().
-
-	// Spawn concurrent ring buffer consumers (readers).
-	for i := range n {
-		wg.Add(1)
-		go func(k int) {
-			_ = rbuff.Pull()
-			// fmt.Printf("arrived to %d consumer: %v\n", k, msg)
-			// if _, loaded := m.LoadOrStore(msg.ID, true); loaded {
-			// 	retries.Add(1)
-			// }
-			wg.Done()
-		}(i)
-	}
-
-	// Spawn concurrent ring buffer producers (writers).
-	for i := range n {
-		wg.Add(1)
-		go func(k int) {
+	// Spawn a concurrent ring buffer producer (writer). You can safely launch
+	// as many such producers as you need when using [ring.SyncBuffer].
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		n := 0
+		for n < total {
 			msg := Message{
-				ID:   k,
-				Text: fmt.Sprintf("hello from %d", k),
+				ID:   n + 1,
+				Text: fmt.Sprintf("hello from %d", n+1),
 			}
-			rbuff.Push(msg)
-			wg.Done()
-		}(i)
-	}
+
+			if ok := rb.Offer(msg); !ok {
+				// We can abort our go-routine here, or perform any kind of
+				// work. In this case, we simply retry.
+				//
+				// Note that we created a ring buffer with size 2. This means
+				// that after successfully pushing 2 elements, the buffer
+				// becomes full. We wait a small delay to give our consumer
+				// above the ability to pull values from the ring buffer,
+				// effectively emptying it.
+				time.Sleep(50 * time.Millisecond)
+				continue
+			}
+
+			n++
+		}
+	}()
 
 	wg.Wait()
-	fmt.Printf("Retried %d pulls\n", retries.Load())
 
 	// Output:
-	// Retried 0 pulls
+	// hello from 1
+	// hello from 2
+	// hello from 3
+	// hello from 4
 }
 
+// Create ring buffer with initially pre-populated data.
 func ExampleNewFrom() {
 	data := make([]string, 0, 3)
 	data = append(data, "hello")
 	data = append(data, "world")
 
 	rbuff := ring.NewFrom(data)
+
+	// [ring.NewFrom] does not retain data that was given to it.
+	data[0] = "not hello?"
 
 	fmt.Println(rbuff.Pull())
 
@@ -176,4 +165,44 @@ func ExampleBuffer_drain() {
 	// true
 	// 0
 	// 11
+}
+
+// Push elements into a ring buffer with a context. Push fails after a timeout.
+func ExampleSyncBuffer_PushWithContext() {
+	rb := ring.NewSync[int](3)
+
+	total := 5
+	start := time.Now()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := range total {
+			// Give each push 1 second to complete. If the buffer is full,
+			// the pull will cancel the context it returned after 1 second.
+			parent, cancelParent := context.WithTimeout(context.Background(), time.Second)
+
+			ctx, cancel := rb.PushWithContext(parent, i+1)
+
+			<-ctx.Done()
+			if parent.Err() != nil {
+				fmt.Printf("Push %d at second %d: timeout\n", i+1, int(time.Since(start).Seconds()))
+			} else {
+				fmt.Printf("Push %d at second %d: ok\n", i+1, int(time.Since(start).Seconds()))
+			}
+
+			cancel()
+			cancelParent()
+		}
+	}()
+
+	wg.Wait()
+
+	// Output:
+	// Push 1 at second 0: ok
+	// Push 2 at second 0: ok
+	// Push 3 at second 0: ok
+	// Push 4 at second 1: timeout
+	// Push 5 at second 2: timeout
 }
