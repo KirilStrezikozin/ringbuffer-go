@@ -14,20 +14,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package ring implements a generic, fixed-size, thread-safe circular
-// (ring) buffer.
-//
-// A ring buffer is a fixed-size buffer that functions as if it was connected
-// end-to-end. Operations like adding and removing elements are constant time
-// O(1), which makes this data-structure efficient for buffering data streams
-// with frequent reads and writes.
-//
-// This implementation operates in a FIFO (first in, first out) manner. Readers
-// and writers to a ring buffer can be organized as one-to-many, many-to-one,
-// and many-to-many. The data of the buffer is immutable to the user in a sense
-// that they cannot modify the elements currently stored in the buffer, only
-// retrieve them or insert new ones.
-// TODO: Lock-free thread-safety is achieved using CAS operations OR channels?
 package ring
 
 import (

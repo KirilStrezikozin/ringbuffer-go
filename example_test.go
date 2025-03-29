@@ -17,12 +17,10 @@
 package ring_test
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	ring "github.com/KirilStrezikozin/ringbuffer-go"
 )
@@ -32,15 +30,47 @@ type Message struct {
 	Text string
 }
 
-func ExampleNew() {
-	n := 5
-	rbuff := ring.New[Message](n)
+func Example() {
+	n := 100
+	ch := make(chan Message, 5)
 
-	delay := time.Second
-	var retries atomic.Uint32
 	var wg sync.WaitGroup
 
-	parentCtx := context.Background()
+	// Consumers.
+	for i := range n {
+		wg.Add(1)
+		go func(k int) {
+			_ = <-ch
+			// fmt.Printf("arrived to %d consumer: %v\n", k, msg)
+			wg.Done()
+		}(i)
+	}
+
+	// Producers.
+	for i := range n {
+		wg.Add(1)
+		go func(k int) {
+			ch <- Message{
+				ID:   k,
+				Text: fmt.Sprintf("hello from %d", k),
+			}
+			wg.Done()
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Output:
+}
+
+func ExampleNew() {
+	n := 100
+	rbuff := ring.NewSync[Message](5)
+
+	// var m sync.Map
+
+	var retries atomic.Uint32
+	var wg sync.WaitGroup
 
 	// TODO: achieve thread-safety.
 	// TODO: need a simple example using *WithContext.
@@ -51,28 +81,12 @@ func ExampleNew() {
 	for i := range n {
 		wg.Add(1)
 		go func(k int) {
-			defer wg.Done()
-			for {
-				// Try pulling from the ring buffer for 1 second.
-				// If we are not able to pull a message within 1 second,
-				// increase retries counter and try again.
-				ctx, cancel := context.WithTimeout(parentCtx, delay)
-
-				var msg Message
-				pull, cancelPull := rbuff.PullWithContext(ctx, &msg)
-				<-pull.Done()
-				cancelPull()
-
-				if ctx.Err() != nil {
-					// Parent context cancelled, our pull did not succeed.
-					retries.Add(1)
-					cancel()
-				} else {
-					fmt.Printf("arrived to %d consumer: %v\n", k, msg)
-					cancel()
-					return
-				}
-			}
+			_ = rbuff.Pull()
+			// fmt.Printf("arrived to %d consumer: %v\n", k, msg)
+			// if _, loaded := m.LoadOrStore(msg.ID, true); loaded {
+			// 	retries.Add(1)
+			// }
+			wg.Done()
 		}(i)
 	}
 
