@@ -17,108 +17,268 @@
 package ring_test
 
 import (
-	"context"
-	"errors"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	ring "github.com/KirilStrezikozin/ringbuffer-go"
+	ringtest "github.com/KirilStrezikozin/ringbuffer-go/ringtest"
 )
 
-// fullBufferer wraps all methods of [ring.Buffer] and [ring.SyncBuffer] for
-// test helpers that check results of calling common methods.
-type fullBufferer[V any] interface {
-	ring.Bufferer[V]
-
-	Len() int
-	Full() bool
-
-	ForcePush(value V)
-	Offer(value V) bool
-	PushWithContext(parent context.Context, value V) (context.Context, context.CancelFunc)
-
-	Peek() V
-	Poll() (V, bool)
-	PullWithContext(parent context.Context, valuePtr *V) (context.Context, context.CancelFunc)
-
-	Write(p []V) (n int, err error)
-	Read(p []V) (n int, err error)
-}
-
-// takePanic is a helper function that recovers a
-// panic from fun and returns it as error.
-func takePanic(fun func()) (err error) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer func() {
-			r := recover()
-			if recoverErr, ok := r.(error); ok {
-				err = recoverErr
-			} else if s, ok := r.(string); ok {
-				err = errors.New(s)
-			} else if stringer, ok := r.(interface{ String() string }); ok {
-				err = errors.New(stringer.String())
-			} else {
-				panic("unknown recover value type")
-			}
-			wg.Done()
-		}()
-
-		fun()
-		wg.Done()
-	}()
-
-	wg.Wait()
-	return err
-}
-
-func testZeroSize[V any](rb fullBufferer[V], t *testing.T) {
-	if count := rb.Count(); count != 0 {
-		t.Fatalf("Count(): want: %v, got: %v", 0, count)
-	}
-
-	if size := rb.Len(); size != 0 {
-		t.Fatalf("Count(): want: %v, got: %v", 0, size)
-	}
-
-	var value V // A dummy value.
-
-	if ok := rb.Offer(value); ok {
-		t.Fatal("Offer(): must not succeed on zero-sized buffer")
-	}
-
-	if _, ok := rb.Poll(); ok {
-		t.Fatal("Poll(): must not succeed on zero-sized buffer")
-	}
-
-	if err := takePanic(func() {
-		_ = rb.Pull()
-	}); err == nil {
-		t.Fatal("Pull(): must panic on zero-sized buffer")
-	}
-
-	if err := takePanic(func() {
-		_ = rb.Peek()
-	}); err == nil {
-		t.Fatal("Peek(): must panic on zero-sized buffer")
-	}
-
-	if err := takePanic(func() {
-		rb.Push(value)
-	}); err == nil {
-		t.Fatal("Push(): must panic on zero-sized buffer")
-	}
+func TestNewSyncFrom(t *testing.T) {
+	ringtest.TestNewFrom(
+		func(data []int) ringtest.Bufferer[int] {
+			return ring.NewSyncFrom(data)
+		},
+		t,
+	)
 }
 
 func TestSyncBuffer_ZeroValue(t *testing.T) {
 	rb := ring.SyncBuffer[int]{}
-	testZeroSize(&rb, t)
+	ringtest.TestZeroSize(&rb, t)
 }
 
 func TestNewSync_ZeroSize(t *testing.T) {
 	type Msg struct{}
 
 	rb := ring.NewSync[Msg](0)
-	testZeroSize(rb, t)
+	ringtest.TestZeroSize(rb, t)
+}
+
+func TestSyncBuffer_Count(t *testing.T) {
+	rb := ring.NewSync[int](2)
+	ringtest.TestCount(rb, t)
+}
+
+func TestSyncBuffer_Len(t *testing.T) {
+	rb := ring.SyncBuffer[byte]{}
+	if size := rb.Len(); size != 0 {
+		t.Errorf("Len() = %v, want %v", size, 0)
+	}
+
+	tests := []struct {
+		name string
+		n    int
+	}{
+		{"sizeEmpty", 0},
+		{"sizeOne", 1},
+		{"sizeTwo", 2},
+		{"sizeMany", 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rb := ring.NewSync[int](tt.n)
+			if size := rb.Len(); size != tt.n {
+				t.Errorf("Len() = %v, want %v", size, tt.n)
+			}
+		})
+	}
+}
+
+func TestSyncBuffer_Full(t *testing.T) {
+	tests := []struct {
+		name string
+		n    int
+	}{
+		{"sizeOne", 1},
+		{"sizeTwo", 2},
+		{"sizeMany", 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rb := ring.NewSync[int](tt.n)
+			ringtest.TestFull(rb, tt.n, t)
+		})
+	}
+}
+
+func TestSyncBuffer_ForcePush(t *testing.T) {
+	rb := ring.NewSync[int](5)
+	ringtest.TestForcePush(rb, t)
+}
+
+func TestSyncBuffer_Offer(t *testing.T) {
+	rb := ring.NewSync[int](5)
+	ringtest.TestOffer(rb, t)
+}
+
+func TestSyncBuffer_PushWithContext(t *testing.T) {
+	ringtest.TestPushWithContext(
+		func(n int) ringtest.Bufferer[int] {
+			return ring.NewSync[int](n)
+		},
+		t,
+	)
+}
+
+func TestSyncBuffer_Peek(t *testing.T) {
+	ringtest.TestPeek(
+		func(data []int) ringtest.Bufferer[int] {
+			return ring.NewSyncFrom(data)
+		},
+		t,
+	)
+}
+
+func TestSyncBuffer_Poll(t *testing.T) {
+	ringtest.TestPoll(
+		func(n int) ringtest.Bufferer[int] {
+			return ring.NewSync[int](n)
+		},
+		t,
+	)
+}
+
+func TestSyncBuffer_PullWithContext(t *testing.T) {
+	ringtest.TestPullWithContext(
+		func(n int) ringtest.Bufferer[int] {
+			return ring.NewSync[int](n)
+		},
+		t,
+	)
+}
+
+func TestSyncBuffer_Write(t *testing.T) {
+	n := 8
+	rb := ring.NewSync[int](n)
+
+	if rb.Len() != n {
+		t.Fatalf("Len() = %v, want: %v", rb.Len(), n)
+	}
+
+	dataN := 4 * n
+	data := make([]int, dataN)
+	for i := range len(data) {
+		data[i] = i + 1
+	}
+
+	chWrite := make(chan error)
+	go func() {
+		// Write will block once it writes n elements.
+		// The other go-routine below will sense this and pull n elements out,
+		// after which this Write will continue its work, until all dataN
+		// elements have been written, at which point the two go-routines
+		// should exit.
+
+		if n, err := rb.Write(data); err != nil {
+			chWrite <- fmt.Errorf("Write(): expected nil err, got: %v", err)
+			return
+		} else if n != len(data) {
+			chWrite <- fmt.Errorf("Write(): expected to write %d elements, but wrote %d", len(data), n)
+			return
+		}
+		close(chWrite)
+	}()
+
+	chRead := make(chan error)
+	go func() {
+		written := 0
+		for {
+			if !rb.Full() {
+				continue
+			}
+
+			for i := range rb.Len() {
+				if _, ok := rb.Poll(); !ok {
+					chRead <- fmt.Errorf("Poll(): failed to pull data[%d]", written+i)
+					return
+				}
+				written++
+			}
+
+			if written == dataN {
+				close(chRead)
+				return
+			}
+		}
+	}()
+
+	// Test fails on error without waiting for other go-routines to finish.
+	// This prevents us from waiting indefinitely for this test to finish.
+	select {
+	case err := <-chWrite:
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-chRead
+	case err := <-chRead:
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-chWrite
+	}
+
+	if count := rb.Count(); count != 0 {
+		t.Fatalf("Count() = %v, want: %v", count, 0)
+	}
+}
+
+func TestSyncBuffer_Read(t *testing.T) {
+	ringtest.TestRead(
+		func(n int) ringtest.Bufferer[int] {
+			return ring.NewSync[int](n)
+		},
+		t,
+	)
+}
+
+func TestSyncBuffer_DataRace(t *testing.T) {
+	// Running Go race detector successfully and correctly detects any data
+    // races. This test exists as a nuclear way to spot invalid or messed up
+	// values returned by Pull()s.
+
+	type Payload struct {
+		ID   int
+		Text string
+	}
+
+	n := 100000
+	rb := ring.NewSync[Payload](1)
+
+	var count atomic.Uintptr
+	var overlaps atomic.Uintptr
+
+	var wg sync.WaitGroup
+	var m sync.Map
+
+	// Spawn concurrent ring buffer consumers (readers).
+	for range n {
+		wg.Add(1)
+		go func() {
+			p := rb.Pull()
+			if _, loaded := m.LoadOrStore(p.ID, true); loaded {
+				// Element with this ID has been already pulled,
+				// this must be a data race.
+				overlaps.Add(1)
+			}
+
+			count.Add(1)
+			wg.Done()
+		}()
+	}
+
+	// Spawn concurrent ring buffer producers (writers).
+	for i := range n {
+		wg.Add(1)
+		go func(k int) {
+			p := Payload{
+				ID:   k,
+				Text: fmt.Sprintf("hello from %d", k),
+			}
+			rb.Push(p)
+			wg.Done()
+		}(i)
+	}
+
+	wg.Wait()
+
+	if c := count.Load(); c != uintptr(n) {
+		t.Fatalf("Pulled %v elements instead of %v", c, n)
+	}
+
+	if o := overlaps.Load(); o != 0 {
+		t.Fatalf("%d broken elements, must be 0", o)
+	}
 }
