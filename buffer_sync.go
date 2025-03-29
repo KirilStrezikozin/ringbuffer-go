@@ -102,6 +102,7 @@ func (rb *SyncBuffer[V]) Count() int {
 // Len returns the size of the ring buffer's data. This value is the maximum
 // number of elements the buffer can hold.
 func (rb *SyncBuffer[V]) Len() int {
+	// rb.data is never re-sliced, thus this value never changes.
 	return len(rb.data)
 }
 
