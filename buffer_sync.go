@@ -104,6 +104,11 @@ func (rb *SyncBuffer[V]) Len() int {
 // if the buffer is not full and insertion succeeds. Otherwise, Offer does not
 // block and immediately returns false.
 func (rb *SyncBuffer[V]) Offer(value V) bool {
+	if len(rb.data) == 0 { // Fast path.
+		return false
+	}
+
+	// Slow path.
 	rb.pushMu.Lock()
 
 	newWrite := rb.write + 1
@@ -131,6 +136,12 @@ func (rb *SyncBuffer[V]) Offer(value V) bool {
 // reads an element from the buffer. For more control over insertion,
 // see [SyncBuffer.Offer] and [SyncBuffer.PushWithContext].
 func (rb *SyncBuffer[V]) Push(value V) {
+	if len(rb.data) == 0 { // Fast path.
+		// Push to zero-sized buffer, panic instead of blocking forever.
+		panic("push to zero-sized buffer")
+	}
+
+	// Slow path.
 	rb.pushMu.Lock()
 
 	newWrite := rb.write + 1
@@ -205,6 +216,11 @@ func (rb *SyncBuffer[V]) PushWithContext(parent context.Context, value V) (conte
 func (rb *SyncBuffer[V]) Poll() (V, bool) {
 	var value V
 
+	if len(rb.data) == 0 { // Fast path.
+		return value, false
+	}
+
+	// Slow path.
 	rb.pullMu.Lock()
 
 	newRead := rb.read + 1
@@ -231,6 +247,12 @@ func (rb *SyncBuffer[V]) Poll() (V, bool) {
 // blocking if the buffer is empty. This allows you to see what the next pull
 // will yield without affecting the buffer contents.
 func (rb *SyncBuffer[V]) Peek() V {
+	if len(rb.data) == 0 { // Fast path.
+		// Peek into zero-sized buffer, panic instead of blocking forever.
+		panic("peek into zero-sized buffer")
+	}
+
+	// Slow path.
 	rb.pullMu.Lock()
 
 	for {
@@ -250,6 +272,12 @@ func (rb *SyncBuffer[V]) Peek() V {
 // For more control over pulling, see [SyncBuffer.Poll], [SyncBuffer.Peek],
 // and [SyncBuffer.PullWithContext].
 func (rb *SyncBuffer[V]) Pull() V {
+	if len(rb.data) == 0 { // Fast path.
+		// Pull from zero-sized buffer, panic instead of blocking forever.
+		panic("pull from zero-sized buffer")
+	}
+
+	// Slow path.
 	rb.pullMu.Lock()
 
 	newRead := rb.read + 1
