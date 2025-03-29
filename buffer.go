@@ -41,6 +41,9 @@ type Bufferer[V any] interface {
 // constant time O(1) element adding and removing operations. Use [New] to
 // create a ring buffer.
 //
+// The zero value is a buffer of size zero, on which blocking push and pull
+// operations panic.
+//
 // Buffer with element type `byte` implements [io.ReadWriter] interface.
 type Buffer[V any] struct {
 	count int
