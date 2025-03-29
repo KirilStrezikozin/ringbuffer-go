@@ -17,6 +17,7 @@
 package ring
 
 import (
+	"context"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -154,6 +155,44 @@ func (rb *SyncBuffer[V]) Push(value V) {
 	}
 }
 
+// PushWithContext returns a copy of the parent context that is marked done
+// (its Done channel is closed) when the value is inserted into the ring
+// buffer, when the returned cancel function is called, or when the parent
+// context's Done channel is closed, whichever happens first.
+//
+// If the provided parent context is nil, [context.Background] will be used.
+//
+// The cancel function releases resources associated with it, so code should
+// call cancel as soon as the operations running in this Context complete or
+// the value no longer needs to be inserted.
+func (rb *SyncBuffer[V]) PushWithContext(parent context.Context, value V) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	if ctx.Err() != nil {
+		return ctx, cancel
+	}
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if ok := rb.Offer(value); ok {
+					cancel()
+					return
+				}
+
+				// Buffer is full, spin and retry. It would be much better to
+				// wake this go-routine when push can proceed or when parent
+				// context cancels. See [SyncBuffer.Push] for some details.
+			}
+		}
+	}()
+	return ctx, cancel
+}
+
 // Poll tests if there is an element to read in the ring buffer. If the buffer
 // is empty, Poll returns the element's zero value and false. Otherwise, it
 // pulls the element and returns it with true.
@@ -230,6 +269,53 @@ func (rb *SyncBuffer[V]) Pull() V {
 		// Buffer is empty, spin and retry. See [SyncBuffer.Push] for details
 		// on how we could avoid spinning in the future.
 	}
+}
+
+// PullWithContext returns a copy of the parent context that is marked done
+// (its Done channel is closed) when an element is pulled from the ring
+// buffer, when the returned cancel function is called, or when the parent
+// context's Done channel is closed, whichever happens first.
+//
+// If the provided parent context is nil, [context.Background] will be used.
+//
+// When an element is successfully pulled (removed) from the ring buffer,
+// it is stored in the given value. Clients are allowed to use the element
+// stored in the value after the pull completes.
+//
+// The cancel function releases resources associated with it, so code should
+// call cancel as soon as the operations running in this Context complete or
+// the value no longer needs to be pulled from the ring buffer.
+func (rb *SyncBuffer[V]) PullWithContext(parent context.Context, valuePtr *V) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	if ctx.Err() != nil {
+		return ctx, cancel
+	}
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				// Avoid unnecessarily locking the mutex.
+				if rb.count.Load() == 0 {
+					continue
+				}
+				if value, ok := rb.Poll(); ok {
+					*valuePtr = value
+					cancel()
+					return
+				}
+
+				// Buffer is empty, spin and retry. It would be much better to
+				// wake this go-routine when pull can proceed or when parent
+				// context cancels. See [SyncBuffer.Push] for some details.
+			}
+		}
+	}()
+	return ctx, cancel
 }
 
 // Write inserts len(p) elements from p into the ring buffer. Each insertion
