@@ -74,8 +74,13 @@ func NewSync[V any](n int) *SyncBuffer[V] {
 //
 // See also: [NewSync].
 func NewSyncFrom[V any](data []V) *SyncBuffer[V] {
+	write := len(data)
+	if write == cap(data) {
+		write = 0
+	}
+
 	rb := &SyncBuffer[V]{
-		write: len(data),
+		write: write,
 		data:  make([]element[V], cap(data)),
 	}
 
