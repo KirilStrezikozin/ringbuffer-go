@@ -102,8 +102,9 @@ func (rb *Buffer[V]) Full() bool {
 	return rb.count == len(rb.data)
 }
 
-// ForcePush inserts a new element into the ring buffer. If the buffer is full,
-// it overwrites the last element and advances the reading position.
+// ForcePush performs a non-blocking value insertion into the ring buffer.
+// If the buffer is full, it overwrites the last element and advances the
+// reading position.
 func (rb *Buffer[V]) ForcePush(value V) {
 	if len(rb.data) == 0 { // Fast path.
 		// Force-push to zero-sized buffer.
@@ -130,9 +131,9 @@ func (rb *Buffer[V]) ForcePush(value V) {
 	rb.write = newWrite
 }
 
-// Offer tries to insert a new element into the ring buffer and returns true
-// if the buffer is not full and insertion succeeds. Otherwise, Offer does not
-// block and immediately returns false.
+// Offer performs a non-blocking value insertion into the ring buffer.
+// It returns true if the buffer is not full and insertion succeeds. Otherwise,
+// it immediately returns false.
 func (rb *Buffer[V]) Offer(value V) bool {
 	if len(rb.data) == 0 { // Fast path.
 		return false
