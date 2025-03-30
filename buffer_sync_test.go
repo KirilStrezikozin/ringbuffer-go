@@ -226,7 +226,7 @@ func TestSyncBuffer_Read(t *testing.T) {
 
 func TestSyncBuffer_DataRace(t *testing.T) {
 	// Running Go race detector successfully and correctly detects any data
-    // races. This test exists as a nuclear way to spot invalid or messed up
+	// races. This test exists as a nuclear way to spot invalid or messed up
 	// values returned by Pull()s.
 
 	type Payload struct {

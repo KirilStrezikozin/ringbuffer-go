@@ -63,7 +63,7 @@ func New[V any](n int) *Buffer[V] {
 
 // NewFrom allocates and returns a new circular (ring) buffer with contents
 // pre-populated from data. Data is assumed to already contain elements,
-// as such [SyncBuffer] will store the next element to push at len(data),
+// as such [Buffer] will store the next element to push at len(data),
 // and wrap to the beginning when cap(data) is reached. Pulling will
 // start from the beginning.
 //
@@ -358,7 +358,7 @@ func (rb *Buffer[V]) Write(p []V) (int, error) {
 }
 
 // Read pulls (removes) len(p) elements from the ring buffer and stores them
-// in p. Read can pull [Buffer.Count] elements at the maximum, at which
+// in p. Read can pull Buffer.Count() elements at the maximum, at which
 // point it returns immediately. Read does not block and returns the number of
 // elements less than len(p) successfully pulled. Error is always nil, except
 // when len(p) > 0 and no elements are available in the buffer, in which case

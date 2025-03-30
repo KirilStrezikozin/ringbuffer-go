@@ -54,8 +54,6 @@ type SyncBuffer[V any] struct {
 	data []element[V]
 }
 
-// TODO: benchmark, docs, reference, go report, coverage, CI, branch protection.
-
 // NewSync allocates and returns a new thread-safe, fixed-size circular (ring)
 // buffer that fits n elements in total.
 func NewSync[V any](n int) *SyncBuffer[V] {
@@ -474,7 +472,7 @@ func (rb *SyncBuffer[V]) Write(p []V) (int, error) {
 }
 
 // Read pulls (removes) len(p) elements from the ring buffer and stores them
-// in p. Read can pull [SyncBuffer.Count] elements at the maximum, at which
+// in p. Read can pull SyncBuffer.Count() elements at the maximum, at which
 // point it returns immediately. Read does not block and returns the number of
 // elements less than len(p) successfully pulled. Error is always nil, except
 // when len(p) > 0 and no elements are available in the buffer, in which case

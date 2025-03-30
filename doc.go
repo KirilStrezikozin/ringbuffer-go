@@ -15,9 +15,8 @@
 // limitations under the License.
 
 /*
-Package ring implements a generic, fixed-size, thread-safe circular
-
-(ring) buffer.
+Package ring implements a generic, fixed-size, thread-safe circular (ring)
+buffer.
 
 This implementation operates in a FIFO (first in, first out) manner. Readers
 and writers to a ring buffer can be organized as one-to-many, many-to-one,

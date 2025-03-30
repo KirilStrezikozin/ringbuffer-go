@@ -76,7 +76,7 @@ func Example() {
 }
 
 // Create a ring buffer that is safe to push/pull from concurrently.
-// Launch a go-routine that polls elements from the ring buffer, blocking if
+// Launch a go-routine that pulls elements from the ring buffer, blocking if
 // there are no elements to pull. Launch another go-routine that inserts
 // elements into the ring buffer, without blocking if the buffer is full.
 func ExampleNewSync() {
@@ -187,7 +187,7 @@ func ExampleBuffer_Read() {
 }
 
 // Drain a ring buffer.
-func ExampleBuffer_drain() {
+func Example_drain() {
 	// Drain (remove all elements from) a ring buffer.
 	// Same can be done with ring.SyncBuffer.
 
