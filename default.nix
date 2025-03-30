@@ -5,5 +5,6 @@ pkgs.mkShell {
   packages = with pkgs; [
     gotools
     golangci-lint
+    goperf
   ];
 }
