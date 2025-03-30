@@ -19,17 +19,21 @@ package ring
 import (
 	"context"
 	"io"
-	"sync"
+	"runtime"
 	"sync/atomic"
 )
 
+// Determines the right to read/write the buffer's element.
 const (
 	canWriteElement = uint32(iota)
+	canIsWritingElement
 	canReadElement
+	canIsReadingElement
 )
 
+// Element represents an item in [SyncBuffer].
 type element[V any] struct {
-	can   atomic.Uint32
+	can   uint32
 	value V
 }
 
@@ -44,12 +48,8 @@ type element[V any] struct {
 type SyncBuffer[V any] struct {
 	_ noCopy
 
-	count atomic.Uintptr
-	write int
-	read  int
-
-	pullMu sync.Mutex
-	pushMu sync.Mutex
+	write uintptr
+	read  uintptr
 
 	data []element[V]
 }
@@ -80,14 +80,13 @@ func NewSyncFrom[V any](data []V) *SyncBuffer[V] {
 	}
 
 	rb := &SyncBuffer[V]{
-		write: write,
+		write: uintptr(write),
 		data:  make([]element[V], cap(data)),
 	}
 
-	rb.count.Store(uintptr(len(data)))
 	for i, v := range data {
 		rb.data[i].value = v
-		rb.data[i].can.Store(canReadElement)
+		rb.data[i].can = canReadElement
 	}
 
 	return rb
@@ -99,7 +98,23 @@ func (rb *SyncBuffer[V]) Count() int {
 		return 0
 	}
 
-	return int(rb.count.Load()) // Slow path.
+	// Slow path. The actual number of elements the buffer holds may have
+	// changed by the time the calling function receives the return value.
+	write := atomic.LoadUintptr(&rb.write)
+	read := atomic.LoadUintptr(&rb.read)
+
+	if write > read {
+		return int(write - read)
+	} else if write < read {
+		return int(uintptr(len(rb.data)) - read + write)
+	}
+
+	switch atomic.LoadUint32(&rb.data[write].can) {
+	case canWriteElement, canIsWritingElement:
+		return 0
+	default:
+		return int(uintptr(len(rb.data)) - read + write)
+	}
 }
 
 // Len returns the size of the ring buffer's data. This value is the maximum
@@ -111,7 +126,7 @@ func (rb *SyncBuffer[V]) Len() int {
 
 // Full reports whether the ring buffer is full.
 func (rb *SyncBuffer[V]) Full() bool {
-	return int(rb.count.Load()) == len(rb.data)
+	return rb.Count() == len(rb.data)
 }
 
 // ForcePush inserts a new element into the ring buffer. If the buffer is full,
@@ -123,38 +138,33 @@ func (rb *SyncBuffer[V]) ForcePush(value V) {
 	}
 
 	// Slow path.
-	rb.pushMu.Lock()
+	for {
+		write := atomic.LoadUintptr(&rb.write)
+		newWrite := write + 1
+		if newWrite == uintptr(len(rb.data)) {
+			newWrite = 0
+		}
 
-	newWrite := rb.write + 1
-	if newWrite == len(rb.data) {
-		newWrite = 0
-	}
+		e := &rb.data[write]
+		if atomic.CompareAndSwapUint32(&e.can, canReadElement, canIsWritingElement) {
+			read := atomic.LoadUintptr(&rb.read)
+			newRead := read + 1
+			if newRead == uintptr(len(rb.data)) {
+				newRead = 0
+			}
+			atomic.StoreUintptr(&rb.read, newRead)
+		} else if !atomic.CompareAndSwapUint32(&e.can, canWriteElement, canIsWritingElement) {
+			// Someone else is either concurrently writing the same element
+			// or reading it. Allow other go-routines to run and retry.
+			runtime.Gosched()
+			continue
+		}
 
-	if rb.data[rb.write].can.Load() == canWriteElement {
-		rb.data[rb.write].value = value
-		rb.data[rb.write].can.Store(canReadElement)
-		rb.write = newWrite
-
-		rb.pushMu.Unlock()
-		rb.count.Add(1)
+		atomic.StoreUintptr(&rb.write, newWrite)
+		e.value = value
+		atomic.StoreUint32(&e.can, canReadElement)
 		return
 	}
-
-	// Non-blocking push failed, overwrite the last element with our value.
-	rb.pullMu.Lock()
-
-	newRead := rb.read + 1
-	if newRead == len(rb.data) {
-		newRead = 0
-	}
-
-	// write == read at this point.
-	rb.data[rb.write].value = value
-	rb.read = newRead
-	rb.pullMu.Unlock()
-
-	rb.write = newWrite
-	rb.pushMu.Unlock()
 }
 
 // Offer tries to insert a new element into the ring buffer and returns true
@@ -166,26 +176,31 @@ func (rb *SyncBuffer[V]) Offer(value V) bool {
 	}
 
 	// Slow path.
-	rb.pushMu.Lock()
+	for {
+		write := atomic.LoadUintptr(&rb.write)
+		newWrite := write + 1
+		if newWrite == uintptr(len(rb.data)) {
+			newWrite = 0
+		}
 
-	newWrite := rb.write + 1
-	if newWrite == len(rb.data) {
-		newWrite = 0
-	}
+		e := &rb.data[write]
+		if atomic.LoadUint32(&e.can) >= canReadElement {
+			// We bumped into the element that is awaiting to be read. Buffer is full.
+			return false
+		}
 
-	if rb.data[rb.write].can.Load() == canWriteElement {
-		rb.data[rb.write].value = value
-		rb.data[rb.write].can.Store(canReadElement)
-		rb.write = newWrite
+		if !atomic.CompareAndSwapUint32(&e.can, canWriteElement, canIsWritingElement) {
+			// Someone else has concurrently locked the element for writing.
+			// Allow other go-routines to run and retry.
+			runtime.Gosched()
+			continue
+		}
 
-		rb.pushMu.Unlock()
-		rb.count.Add(1)
+		atomic.StoreUintptr(&rb.write, newWrite)
+		e.value = value
+		atomic.StoreUint32(&e.can, canReadElement)
 		return true
 	}
-
-	// Buffer is full, cannot insert.
-	rb.pushMu.Unlock()
-	return false
 }
 
 // Push inserts a new element into the ring buffer, blocking if the buffer is
@@ -199,29 +214,26 @@ func (rb *SyncBuffer[V]) Push(value V) {
 	}
 
 	// Slow path.
-	rb.pushMu.Lock()
-
-	newWrite := rb.write + 1
-	if newWrite == len(rb.data) {
-		newWrite = 0
-	}
-
-	// If the buffer is not full or someone has concurrently pulled off an
-	// element, we will not block. Otherwise, only the active pusher spins,
-	// others queue up and put to sleep because pushMu is locked, see
-	// [sync.Mutex.Lock]. We could consider putting waiting go-routines
-	// to sleep here directly in the future.
-
 	for {
-		if rb.data[rb.write].can.Load() == canWriteElement {
-			rb.data[rb.write].value = value
-			rb.data[rb.write].can.Store(canReadElement)
-			rb.write = newWrite
-
-			rb.pushMu.Unlock()
-			rb.count.Add(1)
-			return
+		write := atomic.LoadUintptr(&rb.write)
+		newWrite := write + 1
+		if newWrite == uintptr(len(rb.data)) {
+			newWrite = 0
 		}
+
+		e := &rb.data[write]
+		if !atomic.CompareAndSwapUint32(&e.can, canWriteElement, canIsWritingElement) {
+			// Someone else has concurrently locked the element for
+			// writing or the element is awaiting to be read. Allow
+			// other go-routines to run and retry.
+			runtime.Gosched()
+			continue
+		}
+
+		atomic.StoreUintptr(&rb.write, newWrite)
+		e.value = value
+		atomic.StoreUint32(&e.can, canReadElement)
+		return
 	}
 }
 
@@ -239,27 +251,48 @@ func (rb *SyncBuffer[V]) PushWithContext(parent context.Context, value V) (conte
 	if parent == nil {
 		parent = context.Background()
 	}
+
 	ctx, cancel := context.WithCancel(parent)
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || len(rb.data) == 0 {
+		// Fast path. Either parent context is cancelled or buffer is
+		// zero-sized. Let the caller wait for parent context to cancel.
 		return ctx, cancel
 	}
+
+	// Slow path. It would be much better to avoid active spinning, and
+	// wake this go-routine up when push can proceed or parent context cancels.
+	// See https://github.com/golang/go/issues/8899#issuecomment-204886156.
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				if ok := rb.Offer(value); ok {
-					cancel()
-					return
+				write := atomic.LoadUintptr(&rb.write)
+				newWrite := write + 1
+				if newWrite == uintptr(len(rb.data)) {
+					newWrite = 0
 				}
 
-				// Buffer is full, spin and retry. It would be much better to
-				// wake this go-routine when push can proceed or when parent
-				// context cancels. See [SyncBuffer.Push] for some details.
+				e := &rb.data[write]
+				if !atomic.CompareAndSwapUint32(&e.can, canWriteElement, canIsWritingElement) {
+					// Someone else has concurrently locked the element for
+					// writing or the element is awaiting to be read. Allow
+					// other go-routines to run and retry.
+					runtime.Gosched()
+					continue
+				}
+
+				atomic.StoreUintptr(&rb.write, newWrite)
+				e.value = value
+				atomic.StoreUint32(&e.can, canReadElement)
+
+				cancel() // Let the caller know we succeeded.
+				return
 			}
 		}
 	}()
+
 	return ctx, cancel
 }
 
@@ -278,26 +311,31 @@ func (rb *SyncBuffer[V]) Poll() (V, bool) {
 	}
 
 	// Slow path.
-	rb.pullMu.Lock()
+	for {
+		read := atomic.LoadUintptr(&rb.read)
+		newRead := read + 1
+		if newRead == uintptr(len(rb.data)) {
+			newRead = 0
+		}
 
-	newRead := rb.read + 1
-	if newRead == len(rb.data) {
-		newRead = 0
-	}
+		e := &rb.data[read]
+		if atomic.LoadUint32(&e.can) < canReadElement {
+			// We bumped into the element that is awaiting to be written. Buffer is empty.
+			return value, false
+		}
 
-	if rb.data[rb.read].can.Load() == canReadElement {
-		value = rb.data[rb.read].value
-		rb.data[rb.read].can.Store(canWriteElement)
-		rb.read = newRead
+		if !atomic.CompareAndSwapUint32(&e.can, canReadElement, canIsReadingElement) {
+			// Someone else has concurrently locked the element for reading.
+			// Allow other go-routines to run and retry.
+			runtime.Gosched()
+			continue
+		}
 
-		rb.pullMu.Unlock()
-		rb.count.Add(^uintptr(0))
+		atomic.StoreUintptr(&rb.read, newRead)
+		value = e.value
+		atomic.StoreUint32(&e.can, canWriteElement)
 		return value, true
 	}
-
-	// Buffer is empty.
-	rb.pullMu.Unlock()
-	return value, false
 }
 
 // Peek reads an element from the ring buffer without pulling (removing) it,
@@ -310,17 +348,20 @@ func (rb *SyncBuffer[V]) Peek() V {
 	}
 
 	// Slow path.
-	rb.pullMu.Lock()
-
 	for {
-		if rb.data[rb.read].can.Load() == canReadElement {
-			value := rb.data[rb.read].value
-			rb.pullMu.Unlock()
-			return value
+		read := atomic.LoadUintptr(&rb.read)
+		e := &rb.data[read]
+		if !atomic.CompareAndSwapUint32(&e.can, canReadElement, canIsReadingElement) {
+			// Someone else has concurrently locked the element for
+			// reading or the element is awaiting to be written. Allow
+			// other go-routines to run and retry.
+			runtime.Gosched()
+			continue
 		}
 
-		// Buffer is empty, spin and retry. See [SyncBuffer.Push] for details
-		// on how we could avoid spinning in the future.
+		value := e.value
+		atomic.StoreUint32(&e.can, canReadElement)
+		return value
 	}
 }
 
@@ -335,26 +376,26 @@ func (rb *SyncBuffer[V]) Pull() V {
 	}
 
 	// Slow path.
-	rb.pullMu.Lock()
-
-	newRead := rb.read + 1
-	if newRead == len(rb.data) {
-		newRead = 0
-	}
-
 	for {
-		if rb.data[rb.read].can.Load() == canReadElement {
-			value := rb.data[rb.read].value
-			rb.data[rb.read].can.Store(canWriteElement)
-			rb.read = newRead
-
-			rb.pullMu.Unlock()
-			rb.count.Add(^uintptr(0))
-			return value
+		read := atomic.LoadUintptr(&rb.read)
+		newRead := read + 1
+		if newRead == uintptr(len(rb.data)) {
+			newRead = 0
 		}
 
-		// Buffer is empty, spin and retry. See [SyncBuffer.Push] for details
-		// on how we could avoid spinning in the future.
+		e := &rb.data[read]
+		if !atomic.CompareAndSwapUint32(&e.can, canReadElement, canIsReadingElement) {
+			// Someone else has concurrently locked the element for
+			// reading or the element is awaiting to be written. Allow
+			// other go-routines to run and retry.
+			runtime.Gosched()
+			continue
+		}
+
+		atomic.StoreUintptr(&rb.read, newRead)
+		value := e.value
+		atomic.StoreUint32(&e.can, canWriteElement)
+		return value
 	}
 }
 
@@ -376,32 +417,45 @@ func (rb *SyncBuffer[V]) PullWithContext(parent context.Context, valuePtr *V) (c
 	if parent == nil {
 		parent = context.Background()
 	}
+
 	ctx, cancel := context.WithCancel(parent)
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || len(rb.data) == 0 {
+		// Fast path. Either parent context is cancelled or buffer is
+		// zero-sized. Let the caller wait for parent context to cancel.
 		return ctx, cancel
 	}
+
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				// Avoid unnecessarily locking the mutex.
-				if rb.count.Load() == 0 {
-					continue
-				}
-				if value, ok := rb.Poll(); ok {
-					*valuePtr = value
-					cancel()
-					return
+				read := atomic.LoadUintptr(&rb.read)
+				newRead := read + 1
+				if newRead == uintptr(len(rb.data)) {
+					newRead = 0
 				}
 
-				// Buffer is empty, spin and retry. It would be much better to
-				// wake this go-routine when pull can proceed or when parent
-				// context cancels. See [SyncBuffer.Push] for some details.
+				e := &rb.data[read]
+				if !atomic.CompareAndSwapUint32(&e.can, canReadElement, canIsReadingElement) {
+					// Someone else has concurrently locked the element for
+					// reading or the element is awaiting to be written. Allow
+					// other go-routines to run and retry.
+					runtime.Gosched()
+					continue
+				}
+
+				atomic.StoreUintptr(&rb.read, newRead)
+				*valuePtr = e.value
+				atomic.StoreUint32(&e.can, canWriteElement)
+
+				cancel() // Let the caller know we succeeded.
+				return
 			}
 		}
 	}()
+
 	return ctx, cancel
 }
 
