@@ -1,6 +1,6 @@
 # ringbuffer-go
-Fast, generic, thread-safe and fixed-size ring (circular) buffer implementation
-in Go.
+Blazingly fast, generic, thread-safe and lock-free, fixed-size ring (circular)
+buffer implementation in Go.
 
 - [What is a ring buffer](#what-is-a-ring-buffer)
 - [Installation](#installation)
