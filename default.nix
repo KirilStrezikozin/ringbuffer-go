@@ -7,4 +7,8 @@ pkgs.mkShell {
     golangci-lint
     goperf
   ];
+  shellHook = ''
+  go install golang.org/x/pkgsite/cmd/pkgsite@latest
+  export pkgsite=$HOME/go/bin/pkgsite
+  '';
 }
