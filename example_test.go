@@ -31,6 +31,50 @@ type Message struct {
 	Text string
 }
 
+func Example() {
+	rb := ring.NewSync[int](5)
+
+	rb.Push(1)
+	rb.Push(2)
+	rb.Push(3)
+
+	// Ring buffer state is:
+	// [1] [2] [3] [ ] [ ]
+
+	fmt.Println(rb.Pull())
+
+	// Ring buffer state is:
+	// [ ] [2] [3] [ ] [ ]
+
+	rb.Push(4)
+	rb.Push(5)
+	rb.Push(6)
+
+	// Ring buffer state is:
+	// [6] [2] [3] [4] [5]
+
+	rb.ForcePush(7)
+
+	// Ring buffer state is:
+	// [6] [7] [3] [4] [5]
+
+	for {
+		value, ok := rb.Poll()
+		if !ok {
+			break
+		}
+		fmt.Println(value)
+	}
+
+	// Output:
+	// 1
+	// 3
+	// 4
+	// 5
+	// 6
+	// 7
+}
+
 // Create a ring buffer that is safe to push/pull from concurrently.
 // Launch a go-routine that polls elements from the ring buffer, blocking if
 // there are no elements to pull. Launch another go-routine that inserts
