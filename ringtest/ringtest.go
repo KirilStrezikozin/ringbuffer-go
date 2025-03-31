@@ -215,7 +215,7 @@ func TestCount[V any](rb Bufferer[V], t *testing.T) {
 		t.Fatalf("Count() = %v, want: %v", count, 1)
 	}
 
-	for range 2*n + 1 {
+	for i := 0; i < 2*n+1; i++ {
 		rb.ForcePush(value)
 	}
 
@@ -223,7 +223,7 @@ func TestCount[V any](rb Bufferer[V], t *testing.T) {
 		t.Fatalf("Count() = %v, want: %v", count, rb.Len())
 	}
 
-	for i := range n {
+	for i := 0; i < n; i++ {
 		if count := rb.Count(); count != n-i {
 			t.Fatalf("Count() = %v, want: %v", count, n-i)
 		}
@@ -233,7 +233,7 @@ func TestCount[V any](rb Bufferer[V], t *testing.T) {
 
 // TestFull is a test helper to test Full calls on a ring buffer.
 func TestFull(rb Bufferer[int], n int, t *testing.T) {
-	for i := range n {
+	for i := 0; i < n; i++ {
 		if i < n-1 && rb.Full() {
 			t.Error("Full(): must be false on not full buffer")
 		}
@@ -256,7 +256,7 @@ func TestFull(rb Bufferer[int], n int, t *testing.T) {
 func TestForcePush(rb Bufferer[int], t *testing.T) {
 	n := rb.Len()
 
-	for i := range n {
+	for i := 0; i < n; i++ {
 		rb.ForcePush(i + 1)
 		if count := rb.Count(); count != i+1 {
 			t.Fatalf("Count() = %v, want: %v", count, i+1)
@@ -286,7 +286,7 @@ func TestForcePush(rb Bufferer[int], t *testing.T) {
 func TestOffer(rb Bufferer[int], t *testing.T) {
 	n := rb.Len()
 
-	for i := range n {
+	for i := 0; i < n; i++ {
 		if ok := rb.Offer(i + 1); !ok {
 			t.Fatal("Offer(): must be true on not full buffer")
 		}
@@ -459,7 +459,7 @@ func TestRead(newBuff func(int) Bufferer[int], t *testing.T) {
 	}
 
 	nData := 10
-	for i := range nData {
+	for i := 0; i < nData; i++ {
 		rb.Push(i + 1)
 	}
 

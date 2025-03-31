@@ -222,7 +222,7 @@ func ExampleSyncBuffer_PushWithContext() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := range total {
+		for i := 0; i < total; i++ {
 			// Give each push 1 second to complete. If the buffer is full,
 			// the pull will cancel the context it returned after 1 second.
 			parent, cancelParent := context.WithTimeout(context.Background(), time.Second)
