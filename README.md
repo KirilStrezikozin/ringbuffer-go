@@ -97,7 +97,7 @@ func main() {
 
 ## Documentation
 
-Full docs are available on [Go packages](TODO).
+Full docs are available on [Go packages](https://pkg.go.dev/github.com/KirilStrezikozin/ringbuffer-go).
 
 ## Benchmarks
 
