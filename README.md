@@ -1,6 +1,6 @@
 # ringbuffer-go
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Go Reference](https://pkg.go.dev/badge/github.com/KirilStrezikozin/ringbuffer-go)](https://pkg.go.dev/github.com/KirilStrezikozin/ringbuffer-go) [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat)](https://raw.githubusercontent.com/KirilStrezikozin/ringbuffer-go/master/LICENSE) [![Tests](https://github.com/KirilStrezikozin/ringbuffer-go/actions/workflows/go.yml/badge.svg)](https://github.com/KirilStrezikozin/ringbuffer-go/actions/workflows/go.yml) [![Coverage](https://github.com/KirilStrezikozin/ringbuffer-go/wiki/coverage.svg)](https://raw.githack.com/wiki/KirilStrezikozin/ringbuffer-go/coverage.html) [![Go Report](https://goreportcard.com/badge/github.com/KirilStrezikozin/ringbuffer-go)](https://goreportcard.com/report/github.com/KirilStrezikozin/ringbuffer-go)
 
 Blazingly fast, generic, thread-safe and lock-free, fixed-size ring (circular)
 buffer implementation in Go.
