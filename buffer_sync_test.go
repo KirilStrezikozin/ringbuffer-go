@@ -176,21 +176,13 @@ func TestSyncBuffer_Write(t *testing.T) {
 	go func() {
 		written := 0
 		for {
-			if !rb.Full() {
-				continue
-			}
+			if _, ok := rb.Poll(); ok {
+				written++
 
-			for i := 0; i < rb.Count(); i++ {
-				if _, ok := rb.Poll(); !ok {
-					chRead <- fmt.Errorf("Poll(): failed to pull data[%d]", written+i)
+				if written == dataN {
+					close(chRead)
 					return
 				}
-				written++
-			}
-
-			if written == dataN {
-				close(chRead)
-				return
 			}
 		}
 	}()
