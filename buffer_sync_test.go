@@ -37,19 +37,19 @@ func TestNewSyncFrom(t *testing.T) {
 
 func TestSyncBuffer_ZeroValue(t *testing.T) {
 	rb := ring.SyncBuffer[int]{}
-	ringtest.TestZeroSize(&rb, t)
+	ringtest.TestZeroSize[int](&rb, t)
 }
 
 func TestNewSync_ZeroSize(t *testing.T) {
 	type Msg struct{}
 
 	rb := ring.NewSync[Msg](0)
-	ringtest.TestZeroSize(rb, t)
+	ringtest.TestZeroSize[Msg](rb, t)
 }
 
 func TestSyncBuffer_Count(t *testing.T) {
 	rb := ring.NewSync[int](2)
-	ringtest.TestCount(rb, t)
+	ringtest.TestCount[int](rb, t)
 }
 
 func TestSyncBuffer_Len(t *testing.T) {
@@ -150,7 +150,7 @@ func TestSyncBuffer_Write(t *testing.T) {
 
 	dataN := 4 * n
 	data := make([]int, dataN)
-	for i := range len(data) {
+	for i := 0; i < len(data); i++ {
 		data[i] = i + 1
 	}
 
@@ -180,7 +180,7 @@ func TestSyncBuffer_Write(t *testing.T) {
 				continue
 			}
 
-			for i := range rb.Len() {
+			for i := 0; i < rb.Len(); i++ {
 				if _, ok := rb.Poll(); !ok {
 					chRead <- fmt.Errorf("Poll(): failed to pull data[%d]", written+i)
 					return
@@ -237,30 +237,30 @@ func TestSyncBuffer_DataRace(t *testing.T) {
 	n := 100000
 	rb := ring.NewSync[Payload](1)
 
-	var count atomic.Uintptr
-	var overlaps atomic.Uintptr
+	var count uintptr
+	var overlaps uintptr
 
 	var wg sync.WaitGroup
 	var m sync.Map
 
 	// Spawn concurrent ring buffer consumers (readers).
-	for range n {
+	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func() {
 			p := rb.Pull()
 			if _, loaded := m.LoadOrStore(p.ID, true); loaded {
 				// Element with this ID has been already pulled,
 				// this must be a data race.
-				overlaps.Add(1)
+				atomic.AddUintptr(&overlaps, 1)
 			}
 
-			count.Add(1)
+			atomic.AddUintptr(&count, 1)
 			wg.Done()
 		}()
 	}
 
 	// Spawn concurrent ring buffer producers (writers).
-	for i := range n {
+	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(k int) {
 			p := Payload{
@@ -274,11 +274,11 @@ func TestSyncBuffer_DataRace(t *testing.T) {
 
 	wg.Wait()
 
-	if c := count.Load(); c != uintptr(n) {
+	if c := atomic.LoadUintptr(&count); c != uintptr(n) {
 		t.Fatalf("Pulled %v elements instead of %v", c, n)
 	}
 
-	if o := overlaps.Load(); o != 0 {
+	if o := atomic.LoadUintptr(&overlaps); o != 0 {
 		t.Fatalf("%d broken elements, must be 0", o)
 	}
 }

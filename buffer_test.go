@@ -34,19 +34,19 @@ func TestNewFrom(t *testing.T) {
 
 func TestBuffer_ZeroValue(t *testing.T) {
 	rb := ring.Buffer[int]{}
-	ringtest.TestZeroSize(&rb, t)
+	ringtest.TestZeroSize[int](&rb, t)
 }
 
 func TestNew_ZeroSize(t *testing.T) {
 	type Msg struct{}
 
 	rb := ring.New[Msg](0)
-	ringtest.TestZeroSize(rb, t)
+	ringtest.TestZeroSize[Msg](rb, t)
 }
 
 func TestBuffer_Count(t *testing.T) {
 	rb := ring.New[int](2)
-	ringtest.TestCount(rb, t)
+	ringtest.TestCount[int](rb, t)
 }
 
 func TestBuffer_Len(t *testing.T) {
@@ -147,7 +147,7 @@ func TestBuffer_Write(t *testing.T) {
 
 	dataN := n
 	data := make([]int, dataN)
-	for i := range len(data) {
+	for i := 0; i < len(data); i++ {
 		data[i] = i + 1
 	}
 
