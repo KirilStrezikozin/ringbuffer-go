@@ -39,7 +39,10 @@ import ring "github.com/KirilStrezikozin/ringbuffer-go"
 
 ## Usage
 
-TODO: note on two different ring buffers. Give a link to go reference examples.
+ringbuffer-go comes with two ring buffer types:
+
+- [`SyncBuffer`](https://pkg.go.dev/github.com/KirilStrezikozin/ringbuffer-go#SyncBuffer) is safe for concurrent use by one and/or many parallel producers and consumers.
+- [`Buffer`](https://pkg.go.dev/github.com/KirilStrezikozin/ringbuffer-go#Buffer) does not provide any synchronization mechanisms. This results in even greater speed, but it is not thread-safe.
 
 ```go
 package main
