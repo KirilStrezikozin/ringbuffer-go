@@ -1,0 +1,54 @@
+on: [push, pull_request]
+name: Go
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        go-version: [1.18.x, 1.21.x, 1.23.x, 1.24.x]
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Check out repository
+      uses: actions/checkout@v4
+    - uses: actions/cache@v4
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    - name: Test
+      run: go test -v ./...
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Upload coverage report
+      uses: ncruces/go-coverage-report@v0
+      with:
+        report: 'true'
+        chart: 'true'
+        amend: 'true'
+      continue-on-error: true
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      name: Check out repository
+    - uses: actions/setup-go@v5
+      name: Set up Go
+      with:
+        go-version: 1.23.x
+        cache: false  # managed by golangci-lint
+
+    - uses: golangci/golangci-lint-action@v6
+      name: golangci-lint
+      with:
+        version: latest
+        args: --verbose --timeout=2m
