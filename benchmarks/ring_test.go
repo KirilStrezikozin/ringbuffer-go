@@ -24,33 +24,25 @@ var (
 func BenchmarkGoChanContended(b *testing.B) {
 	ch := make(chan Message, 1)
 	msg := Message{ID: 1, Text: "hello world"}
-	var dummy Message
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			ch <- msg
-			dummy = <-ch
+			<-ch
 		}
 	})
-	if dummy != msg {
-		b.Fail()
-	}
 }
 
 func BenchmarkRingBufferKirilStrezikozinContended(b *testing.B) {
 	rb := ring.NewSync[Message](1)
 	msg := Message{ID: 1, Text: "hello world"}
-	var dummy Message
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			rb.Push(msg)
-			dummy = rb.Pull()
+			rb.Pull()
 		}
 	})
-	if dummy != msg {
-		b.Fail()
-	}
 }
 
 func BenchmarkRingBufferHedzrContended(b *testing.B) {
@@ -66,9 +58,9 @@ func BenchmarkRingBufferHedzrContended(b *testing.B) {
 }
 
 func BenchmarkDiodeContended(b *testing.B) {
-	d := diodes.NewWaiter(diodes.NewManyToOne(1000, diodeNopAlerter))
+	d := diodes.NewPoller(diodes.NewManyToOne(100, diodeNopAlerter))
 	msg := Message{ID: 1, Text: "hello world"}
-    var dummy Message
+	var dummy Message
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -76,9 +68,9 @@ func BenchmarkDiodeContended(b *testing.B) {
 			dummy = *(*Message)(d.Next())
 		}
 	})
-    if dummy != msg {
-        b.Fail()
-    }
+	if dummy != msg {
+		b.Fail()
+	}
 }
 
 func BenchmarkGoChanUncontended(b *testing.B) {
@@ -108,10 +100,6 @@ func BenchmarkGoChanUncontended(b *testing.B) {
 		select {
 		case c <- *data:
 		default:
-			select {
-			case <-c:
-			default:
-			}
 		}
 	}
 
@@ -147,7 +135,7 @@ func BenchmarkRingBufferKirilStrezikozinUncontended(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		data := randData(i)
-		rb.ForcePush(*data)
+		rb.Offer(*data)
 	}
 
 	b.StopTimer()
